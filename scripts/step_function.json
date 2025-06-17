@@ -1,0 +1,99 @@
+{
+  "Comment": "A description of my state machine with retry and failure handling",
+  "StartAt": "lab2-auroratos3complete",
+  "States": {
+    "lab2-auroratos3complete": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "extract_aurora_to_s3"
+      },
+      "Next": "lab2-s3-to-raw-complete",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailState"
+        }
+      ]
+    },
+    "lab2-s3-to-raw-complete": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab2-s3-to-raw-complete"
+      },
+      "Next": "lab2-raw-to-curated-complete",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailState"
+        }
+      ]
+    },
+    "lab2-raw-to-curated-complete": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab2-raw-to-curated-complete"
+      },
+      "Next": "lab2-curated2presentation",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailState"
+        }
+      ]
+    },
+    "lab2-curated2presentation": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "lab2-curated2presentation"
+      },
+      "End": true,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "FailState"
+        }
+      ]
+    },
+    "FailState": {
+      "Type": "Fail",
+      "Error": "JobFailed",
+      "Cause": "The Glue job failed after retries"
+    }
+  }
+}
