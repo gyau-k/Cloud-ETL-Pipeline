@@ -1,4 +1,0 @@
-pandas
-apache-airflow-providers-amazon
-apache-airflow-providers-postgres
-s3fs
