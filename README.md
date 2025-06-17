@@ -1,6 +1,6 @@
 # Cloud ETL Pipeline
 
-This document explains the components and workflow of your Extract, Transform, Load (ETL) pipeline, which uses **Amazon S3** for storage, **Airflow** for orchestration, and **Amazon Redshift** for data warehousing. This pipeline is designed to process music streaming data, user information, and song details to calculate valuable Key Performance Indicators (KPIs).
+This document explains the components and workflow of the Extract, Transform, Load (ETL) pipeline, which uses **Amazon S3** for storage, **Airflow** for orchestration, and **Amazon Redshift** for data warehousing. This pipeline is designed to process music streaming data, user information, and song details to calculate valuable Key Performance Indicators (KPIs).
 
 ## 1. Overall Pipeline Purpose
 
@@ -13,18 +13,17 @@ This pipeline's main goal is to:
 * Calculate important **metrics (KPIs)** like how many unique users are listening per hour, which artists are most popular, or the listening trends for different music genres.
 * Load these prepared and analyzed insights into a powerful database (**Redshift**) where they can be quickly queried for reporting and business decisions.
 
-It's an automated system that keeps your business insights up-to-date, running hourly without manual intervention.
 
 ## 2. Deep Dive into the Python Scripts
 
-Your pipeline is built using several modular Python scripts. Each script has a specific role:
+The pipeline is built using several modular Python scripts. Each script has a specific role:
 
 ### 2.1. `helper_functions.py`
 
-This script contains reusable utility functions that make it easier to interact with Amazon S3. Think of it as a toolkit that other scripts can borrow from.
+This script contains reusable utility functions that make it easier to interact with Amazon S3. 
 
 * **`read_s3_csv_to_df(bucket_name, s3_key, aws_conn_id)`**:
-    * **Purpose**: Reads a CSV (Comma Separated Values) file directly from an S3 bucket and converts it into a Pandas DataFrame. A DataFrame is a powerful table-like data structure in Python, making it easy to manipulate data.
+    * **Purpose**: Reads a CSV (Comma Separated Values) file directly from an S3 bucket and converts it into a Pandas DataFrame. 
     * **How it works**: It uses Airflow's `S3Hook` to connect to S3 and fetch the file content, then Pandas to parse the CSV.
 * **`write_df_to_s3_csv(df, bucket_name, s3_key, aws_conn_id)`**:
     * **Purpose**: Takes a Pandas DataFrame and writes its contents back to an S3 bucket as a CSV file.
@@ -45,7 +44,7 @@ This script is responsible for the "**Extract**" part of ETL. It pulls raw data 
     * **Purpose**: Reads the newly found stream data file from its source S3 location and copies it to a designated "raw" staging area within the `S3_STAGING_BUCKET_NAME`.
     * **How it works**: It pulls the S3 path of the new file from XCom (which `find_new_streams_file_callable` pushed), uses `read_s3_csv_to_df`, and then `write_df_to_s3_csv` to move the data.
 * **`ingest_and_stage_static_data_from_s3(bucket_name, s3_key, output_s3_prefix, ti, S3_STAGING_BUCKET_NAME)`**:
-    * **Purpose**: Similar to the streams ingestion, but for static data files like user and song information. These files are typically updated less frequently.
+    * **Purpose**: Similar to the streams ingestion, but for static data files like user and song information. These files are typically updated less frequently or at all.
     * **How it works**: It directly reads a specified S3 file and stages it in the raw area.
 
 ### 2.3. `validation.py`
@@ -76,7 +75,7 @@ This script handles the "**Transform**" part of ETL. It cleans, reshapes, and ag
     * **Purpose**: This is the central calculation hub. It combines the transformed streams data and transformed song data to compute both the final hourly KPIs and all genre-level KPIs.
     * **How it works**:
         * It reads the transformed streams data, transformed song data, and the partial hourly KPIs (from `transform_streams_task`) from S3.
-        * **Hourly KPIs (Completes)**: It uses the provided logic to calculate `top_artists_per_hour` by merging streams with song artist information, splitting artists, exploding them, counting plays, and finding the top artists per hour. It then merges this with the previously calculated `unique_listeners` and `track_diversity_index` to form the final hourly KPIs.
+        * **Hourly KPIs (Completes)**: It uses the provided logic to calculate `top_artists_per_hour` by merging streams with song artist information, splitting artists, counting plays, and finding the top artists per hour. It then merges this with the previously calculated `unique_listeners` and `track_diversity_index` to form the final hourly KPIs.
         * **Genre KPIs**:
             * **Listen Count**: Counts total plays per genre.
             * **Average Track Duration**: Calculates the average song duration for tracks within each genre.
@@ -86,7 +85,7 @@ This script handles the "**Transform**" part of ETL. It cleans, reshapes, and ag
 
 ### 2.5. `load.py`
 
-This script handles the "**Load**" part of ETL. It moves the transformed data and KPIs from S3 into your Redshift data warehouse.
+This script handles the "**Load**" part of ETL. It moves the transformed data and KPIs from the S3 into the Redshift data warehouse.
 
 * **`_execute_redshift_sql_callable(sql_commands, redshift_conn_id)`**:
     * **Purpose**: A utility function to run any SQL command (like `CREATE TABLE`, `DELETE`, `INSERT`) against your Redshift cluster.
@@ -121,7 +120,7 @@ This is the main Airflow DAG (Directed Acyclic Graph) file. It defines the entir
 
 ## 3. Workflow of the Pipeline
 
-Here's a step-by-step walkthrough of how data flows through your ETL pipeline:
+Here's a step-by-step walkthrough of how data moves through the ETL pipeline:
 
 1.  **Find New Streams**: The pipeline first checks the `lab1-etl-landingzone/streams/` S3 bucket for any new streaming data files that haven't been processed yet.
     * **If new files are found**: The pipeline proceeds with the streams data path. The S3 path of the newest file is logged and passed on.
@@ -154,4 +153,3 @@ Here's a step-by-step walkthrough of how data flows through your ETL pipeline:
         * The Redshift staging table is truncated (emptied) to prepare for the next run.
         * The temporary CSV file in S3 that was just loaded is deleted to keep S3 clean.
 
-This comprehensive workflow ensures that your raw streaming data is continuously processed, validated, transformed into valuable KPIs, and loaded into Redshift for analysis and reporting, all automatically and efficiently.
