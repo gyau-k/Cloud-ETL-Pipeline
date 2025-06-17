@@ -1,45 +1,157 @@
-Overview
-========
+# Cloud ETL Pipeline
 
-Welcome to Astronomer! This project was generated after you ran 'astro dev init' using the Astronomer CLI. This readme describes the contents of the project, as well as how to run Apache Airflow on your local machine.
+This document explains the components and workflow of your Extract, Transform, Load (ETL) pipeline, which uses **Amazon S3** for storage, **Airflow** for orchestration, and **Amazon Redshift** for data warehousing. This pipeline is designed to process music streaming data, user information, and song details to calculate valuable Key Performance Indicators (KPIs).
 
-Project Contents
-================
+## 1. Overall Pipeline Purpose
 
-Your Astro project contains the following files and folders:
+Imagine you have a music streaming service. Every time someone listens to a song, that event is recorded. You also have static information about your users (their age, country) and the songs themselves (genre, artist, popularity).
 
-- dags: This folder contains the Python files for your Airflow DAGs. By default, this directory includes one example DAG:
-    - `example_astronauts`: This DAG shows a simple ETL pipeline example that queries the list of astronauts currently in space from the Open Notify API and prints a statement for each astronaut. The DAG uses the TaskFlow API to define tasks in Python, and dynamic task mapping to dynamically print a statement for each astronaut. For more on how this DAG works, see our [Getting started tutorial](https://www.astronomer.io/docs/learn/get-started-with-airflow).
-- Dockerfile: This file contains a versioned Astro Runtime Docker image that provides a differentiated Airflow experience. If you want to execute other commands or overrides at runtime, specify them here.
-- include: This folder contains any additional files that you want to include as part of your project. It is empty by default.
-- packages.txt: Install OS-level packages needed for your project by adding them to this file. It is empty by default.
-- requirements.txt: Install Python packages needed for your project by adding them to this file. It is empty by default.
-- plugins: Add custom or community plugins for your project to this file. It is empty by default.
-- airflow_settings.yaml: Use this local-only file to specify Airflow Connections, Variables, and Pools instead of entering them in the Airflow UI as you develop DAGs in this project.
+This pipeline's main goal is to:
 
-Deploy Your Project Locally
-===========================
+* Collect all this **raw data** from various sources (S3 buckets).
+* **Clean and prepare** the data to ensure it's accurate and consistent.
+* Calculate important **metrics (KPIs)** like how many unique users are listening per hour, which artists are most popular, or the listening trends for different music genres.
+* Load these prepared and analyzed insights into a powerful database (**Redshift**) where they can be quickly queried for reporting and business decisions.
 
-Start Airflow on your local machine by running 'astro dev start'.
+It's an automated system that keeps your business insights up-to-date, running hourly without manual intervention.
 
-This command will spin up five Docker containers on your machine, each for a different Airflow component:
+## 2. Deep Dive into the Python Scripts
 
-- Postgres: Airflow's Metadata Database
-- Scheduler: The Airflow component responsible for monitoring and triggering tasks
-- DAG Processor: The Airflow component responsible for parsing DAGs
-- API Server: The Airflow component responsible for serving the Airflow UI and API
-- Triggerer: The Airflow component responsible for triggering deferred tasks
+Your pipeline is built using several modular Python scripts. Each script has a specific role:
 
-When all five containers are ready the command will open the browser to the Airflow UI at http://localhost:8080/. You should also be able to access your Postgres Database at 'localhost:5432/postgres' with username 'postgres' and password 'postgres'.
+### 2.1. `helper_functions.py`
 
-Note: If you already have either of the above ports allocated, you can either [stop your existing Docker containers or change the port](https://www.astronomer.io/docs/astro/cli/troubleshoot-locally#ports-are-not-available-for-my-local-airflow-webserver).
+This script contains reusable utility functions that make it easier to interact with Amazon S3. Think of it as a toolkit that other scripts can borrow from.
 
-Deploy Your Project to Astronomer
-=================================
+* **`read_s3_csv_to_df(bucket_name, s3_key, aws_conn_id)`**:
+    * **Purpose**: Reads a CSV (Comma Separated Values) file directly from an S3 bucket and converts it into a Pandas DataFrame. A DataFrame is a powerful table-like data structure in Python, making it easy to manipulate data.
+    * **How it works**: It uses Airflow's `S3Hook` to connect to S3 and fetch the file content, then Pandas to parse the CSV.
+* **`write_df_to_s3_csv(df, bucket_name, s3_key, aws_conn_id)`**:
+    * **Purpose**: Takes a Pandas DataFrame and writes its contents back to an S3 bucket as a CSV file.
+    * **How it works**: It converts the DataFrame into a CSV string in memory and then uses `S3Hook` to upload that string to S3.
 
-If you have an Astronomer account, pushing code to a Deployment on Astronomer is simple. For deploying instructions, refer to Astronomer documentation: https://www.astronomer.io/docs/astro/deploy-code/
+### 2.2. `extraction.py`
 
-Contact
-=======
+This script is responsible for the "**Extract**" part of ETL. It pulls raw data from your source S3 buckets and stages it (puts it into a temporary location) in another S3 bucket for further processing.
 
-The Astronomer CLI is maintained with love by the Astronomer team. To report a bug or suggest a change, reach out to our support.
+* **`get_processed_files_s3(log_bucket, log_key)`** and **`add_processed_file_s3(log_bucket, log_key, s3_key_to_add)`**:
+    * **Purpose**: These functions help the pipeline track which streaming data files have already been processed to avoid reprocessing the same data repeatedly. They manage a log file in S3.
+* **`find_new_streams_file_callable(bucket_name, prefix, log_bucket, log_key, ti)`**:
+    * **Purpose**: This is a key function for stream data. It scans a specific S3 location (`streams/`) to find new CSV files that haven't been processed yet.
+    * **How it works**: It compares the current files in S3 with its internal log of already processed files. If a new file is found, its S3 location is "pushed" to Airflow's XCom (a mechanism for tasks to communicate) so the next task knows which file to process. If no new files are found, it signals to skip the stream processing.
+* **`decide_streams_pipeline_path(ti)`**:
+    * **Purpose**: This is a branching function. Based on whether `find_new_streams_file_callable` found a new file, this function tells Airflow which path to take in the pipeline: either proceed with processing the new stream file or skip to a "dummy" task (a placeholder indicating no action is needed).
+* **`ingest_and_stage_streams_data_from_s3(output_s3_prefix, ti, S3_STAGING_BUCKET_NAME)`**:
+    * **Purpose**: Reads the newly found stream data file from its source S3 location and copies it to a designated "raw" staging area within the `S3_STAGING_BUCKET_NAME`.
+    * **How it works**: It pulls the S3 path of the new file from XCom (which `find_new_streams_file_callable` pushed), uses `read_s3_csv_to_df`, and then `write_df_to_s3_csv` to move the data.
+* **`ingest_and_stage_static_data_from_s3(bucket_name, s3_key, output_s3_prefix, ti, S3_STAGING_BUCKET_NAME)`**:
+    * **Purpose**: Similar to the streams ingestion, but for static data files like user and song information. These files are typically updated less frequently.
+    * **How it works**: It directly reads a specified S3 file and stages it in the raw area.
+
+### 2.3. `validation.py`
+
+This script performs the "**Validate**" step, ensuring the quality and correctness of the data after it has been ingested. It's crucial for catching issues early.
+
+* **`validate_columns_logic(df, required_columns, file_name)`**:
+    * **Purpose**: Checks if all expected columns are present in a DataFrame. This prevents downstream errors if a source file suddenly changes its format.
+* **`check_null_values(df, columns_to_check, file_name)`**:
+    * **Purpose**: Identifies if critical columns have missing (null) values. It logs warnings but doesn't necessarily fail the task, as some nulls might be handled in transformation.
+* **`validate_data_task_callable(ti, input_task_id, required_cols, critical_null_cols, file_name, output_s3_prefix, S3_STAGING_BUCKET_NAME)`**:
+    * **Purpose**: A general function that orchestrates the validation process for any given dataset (streams, users, or songs).
+    * **How it works**: It pulls the S3 path of the data from XCom, reads it, applies the column and null checks, and then writes the validated data to another S3 staging area (`validated/`).
+
+### 2.4. `transformation.py`
+
+This script handles the "**Transform**" part of ETL. It cleans, reshapes, and aggregates data to derive meaningful insights (KPIs).
+
+* **`transform_data_task_callable(ti, input_task_id, file_name, output_s3_prefix, S3_STAGING_BUCKET_NAME, hourly_kpi_output_prefix=None)`**:
+    * **Purpose**: Applies specific transformations based on the type of data (streams, users, or songs).
+    * **Streams Data Transformations**:
+        * Converts `listen_time` to proper datetime format.
+        * Calculates `unique_listeners` and `track_diversity_index` (unique tracks / total plays) per hour. These are written to a partial hourly KPI file in S3.
+    * **User Data Transformations**: Converts `user_age` to numeric and `created_at` to datetime.
+    * **Song Data Transformations**: Converts numeric columns to correct types, 'explicit' to boolean, and cleans up string fields. It also drops rows with missing critical song data.
+    * **How it works**: It reads the validated data from S3, applies the transformations, and writes the transformed data to yet another S3 staging area (`transformed/`).
+* **`calculate_genre_kpis_callable(ti, S3_STAGING_BUCKET_NAME, S3_PREFIX_GENRE_KPI, S3_PREFIX_HOURLY_KPI)`**:
+    * **Purpose**: This is the central calculation hub. It combines the transformed streams data and transformed song data to compute both the final hourly KPIs and all genre-level KPIs.
+    * **How it works**:
+        * It reads the transformed streams data, transformed song data, and the partial hourly KPIs (from `transform_streams_task`) from S3.
+        * **Hourly KPIs (Completes)**: It uses the provided logic to calculate `top_artists_per_hour` by merging streams with song artist information, splitting artists, exploding them, counting plays, and finding the top artists per hour. It then merges this with the previously calculated `unique_listeners` and `track_diversity_index` to form the final hourly KPIs.
+        * **Genre KPIs**:
+            * **Listen Count**: Counts total plays per genre.
+            * **Average Track Duration**: Calculates the average song duration for tracks within each genre.
+            * **Popularity Index**: A calculated score based on average song popularity and total listens within a genre.
+            * **Most Popular Track per Genre**: Identifies the song with the highest popularity within each genre.
+        * It writes both the final hourly KPIs and the genre KPIs as separate CSVs to their respective S3 `transformed/` prefixes. It also pushes their S3 paths to XCom for the loading tasks.
+
+### 2.5. `load.py`
+
+This script handles the "**Load**" part of ETL. It moves the transformed data and KPIs from S3 into your Redshift data warehouse.
+
+* **`_execute_redshift_sql_callable(sql_commands, redshift_conn_id)`**:
+    * **Purpose**: A utility function to run any SQL command (like `CREATE TABLE`, `DELETE`, `INSERT`) against your Redshift cluster.
+* **`_copy_s3_to_redshift_callable(ti, s3_key_upstream_task_id, s3_key_xcom_key, s3_fallback_bucket, redshift_table, redshift_iam_role_arn, redshift_conn_id, copy_options, target_columns)`**:
+    * **Purpose**: Performs the core data loading from S3 to Redshift. Redshift has a very efficient `COPY` command for this.
+    * **How it works**: It pulls the S3 path of the transformed data from XCom, constructs a `COPY` SQL command (specifying the S3 bucket, key, IAM role for access, and column mapping), and executes it. Data is first loaded into a temporary "staging" table in Redshift.
+* **`_delete_s3_key_callable(ti, s3_key_upstream_task_id, s3_key_xcom_key, aws_conn_id)`**:
+    * **Purpose**: Cleans up temporary files in S3 after they have been successfully loaded into Redshift. This is important for cost management and keeping S3 organized.
+* **`create_redshift_load_and_upsert_tasks(...)`**:
+    * **Purpose**: This is a helper function that generates a set of Airflow tasks for a given Redshift table (e.g., for hourly KPIs or genre KPIs). It encapsulates the common pattern of:
+        * Loading data from S3 into a staging table in Redshift.
+        * Performing an **UPSERT** operation from the staging table to the final table.
+        * **UPSERT (Update or Insert)**: This is a database operation where, for new data, it inserts the records. For existing records (identified by primary keys), it updates them. This prevents duplicate data and keeps your final tables current. The SQL generated by this function first `DELETE`s old matching records from the final table, then `INSERT`s all records from the staging table, and finally `TRUNCATE`s (empties) the staging table.
+        * Cleaning up the S3 source file.
+
+### 2.6. `mwaa_dag.py` (The Orchestrator)
+
+This is the main Airflow DAG (Directed Acyclic Graph) file. It defines the entire pipeline, specifying the order of operations, what each step does, and how they pass information. It's the "brain" that tells Airflow how to run your ETL process.
+
+* **S3 Configuration**: Defines all the S3 bucket names and prefixes used across the pipeline for raw, staged, validated, and transformed data.
+* **Redshift Table Configuration**: Defines the names and schemas (column names and data types) for your final and staging tables in Redshift for both hourly and genre KPIs. This is critical for matching data types and ensuring data integrity.
+    * **`HOURLY_KPI_FINAL_SCHEMA`**: Defines `listen_hour`, `top_artists_per_hour`, `unique_listeners`, `track_diversity_index`.
+    * **`GENRE_KPI_FINAL_SCHEMA`**: Defines `track_genre`, `listen_count`, `average_track_duration`, `popularity_index`, `most_popular_track_per_genre`.
+* **DAG Definition (`cloud_s3_etl_pipeline`)**:
+    * Sets the start date and schedule (hourly).
+    * **Tasks**: Each step in the pipeline is defined as an Airflow `PythonOperator` (running a Python function) or `PostgresOperator` (running SQL).
+    * **Task Dependencies (`>>`)**: This is where the workflow is defined. For example:
+        * `ingest_and_stage_streams_data_task >> validate_streams_task >> transform_streams_task` means ingestion must complete before validation, which must complete before transformation.
+        * `[transform_streams_task, transform_song_task] >> calculate_genre_kpis_task` means both stream and song transformations must be done before KPI calculation can start.
+        * Crucially, the loading tasks now depend on `calculate_genre_kpis_task` because that's where the final, complete KPIs (including `top_artists_per_hour`) are produced.
+    * **XComs (Cross-Communication)**: Tasks use XComs to pass small pieces of information (like the S3 path of a processed file) to subsequent tasks. This ensures that each task knows where to find the data it needs.
+
+## 3. Workflow of the Pipeline
+
+Here's a step-by-step walkthrough of how data flows through your ETL pipeline:
+
+1.  **Find New Streams**: The pipeline first checks the `lab1-etl-landingzone/streams/` S3 bucket for any new streaming data files that haven't been processed yet.
+    * **If new files are found**: The pipeline proceeds with the streams data path. The S3 path of the newest file is logged and passed on.
+    * **If no new files**: The streams-specific part of the pipeline is skipped for this run.
+2.  **Ingest and Stage Raw Data**:
+    * **Streams Data**: If a new streams file was found, it's read from the source S3 bucket and copied to `staging-bucket-lab1test/raw/streams/`.
+    * **Static Data (Users & Songs)**: Separately, the `users_data.csv` and `songs_data.csv` files are read from `etl-lab1-rds-landingzone/processed/` and copied to `staging-bucket-lab1test/raw/users/` and `staging-bucket-lab1test/raw/songs/` respectively.
+3.  **Validate Data**:
+    * Each staged raw dataset (streams, users, songs) undergoes validation.
+    * It checks for required columns and logs warnings for null values in critical columns.
+    * Validated data is then moved to `staging-bucket-lab1test/validated/` prefixes (e.g., `validated/streams/`).
+4.  **Transform Data**:
+    * Each validated dataset undergoes specific transformations:
+        * **Streams**: `listen_time` is parsed, and `unique_listeners` and `track_diversity_index` are calculated per hour. This partial hourly KPI data is saved to S3.
+        * **Users**: Data types for age and creation time are adjusted.
+        * **Songs**: Numeric fields are cast, boolean explicit is converted, and text fields are cleaned.
+    * Transformed data is saved to `staging-bucket-lab1test/transformed/` prefixes (e.g., `transformed/streams/`).
+5.  **Calculate KPIs (Central Hub)**:
+    * The `calculate_genre_kpis_task` runs after both the streams and song data have been transformed.
+    * It pulls the transformed streams and songs data from S3, along with the partial hourly KPIs from `transform_streams_task`.
+    * It then calculates:
+        * The final, complete hourly KPIs, including `top_artists_per_hour` (which requires both streams and song data). These are written to `transformed/hourly_kpis/`.
+        * All the genre-level KPIs (`listen_count`, `average_track_duration`, `popularity_index`, `most_popular_track_per_genre`). These are written to `transformed/genre_kpis/`.
+6.  **Create Redshift Tables (If Not Exists)**:
+    * Before loading, Airflow tasks (`create_hourly_kpis_final_table`, `create_hourly_kpis_staging_table`, `create_genre_kpis_final_table`, `create_genre_kpis_staging_table`) ensure that the necessary final and staging tables in Redshift exist with the correct schema.
+7.  **Load Data to Redshift**:
+    * For both hourly and genre KPIs:
+        * Data is loaded from their respective `transformed/` S3 paths into their Redshift staging tables using the efficient `COPY` command.
+        * An **UPSERT** operation is performed: new records from the staging table are inserted into the final table, and existing records (based on primary keys) are updated.
+        * The Redshift staging table is truncated (emptied) to prepare for the next run.
+        * The temporary CSV file in S3 that was just loaded is deleted to keep S3 clean.
+
+This comprehensive workflow ensures that your raw streaming data is continuously processed, validated, transformed into valuable KPIs, and loaded into Redshift for analysis and reporting, all automatically and efficiently.
