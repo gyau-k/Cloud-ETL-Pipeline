@@ -1,0 +1,338 @@
+CREATE DATABASE IF NOT EXISTS rental_db;
+USE rental_db;
+-- apartments table
+DROP TABLE IF EXISTS apartment_attributes;
+CREATE TABLE apartments (
+    id INT,
+    title VARCHAR(255),
+    source VARCHAR(50),
+    price DECIMAL(10,2),
+    currency VARCHAR(3),
+    listing_created_on VARCHAR(255),
+    is_active VARCHAR(50),
+    last_modified_timestamp VARCHAR(255)
+);
+
+-- apartment_attributes table
+CREATE TABLE apartment_attributes (
+    id INT,
+    category VARCHAR(50),
+    body TEXT,
+    amenities VARCHAR(255),
+    bathrooms INT,
+    bedrooms INT,
+    fee DECIMAL(10,2),
+    has_photo VARCHAR(50),
+    pets_allowed VARCHAR(50),
+    price_display VARCHAR(255),
+    price_type VARCHAR(50),
+    square_feet INT,
+    address VARCHAR(255),
+    cityname VARCHAR(100),
+    state VARCHAR(100),
+    latitude DECIMAL(10,8),
+    longitude DECIMAL(11,8)
+);
+-- user_viewing table
+DROP TABLE IF EXISTS user_viewing;
+CREATE TABLE user_viewing (
+    user_id INT,
+    apartment_id INT,
+    viewed_at VARCHAR(255),
+    is_wishlisted VARCHAR(50),
+    call_to_action VARCHAR(50)
+);
+-- bookings table
+DROP TABLE IF EXISTS bookings;
+CREATE TABLE bookings (
+    booking_id INT,
+    user_id INT,
+    apartment_id INT,
+    booking_date VARCHAR(20),
+    checkin_date VARCHAR(20),
+    checkout_date VARCHAR(20),
+    total_price DECIMAL(10,2),
+    currency VARCHAR(3),
+    booking_status VARCHAR(50)
+);
+
+
+LOAD DATA FROM S3 's3://initial-lab2-bucket/imports/apartments.csv'
+INTO TABLE apartments
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"' -- <--- ADD THIS LINE
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES;
+
+LOAD DATA FROM S3 's3://initial-lab2-bucket/imports/apartment_attributes.csv'
+INTO TABLE apartment_attributes
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"' -- This handles quoted fields like "Balcony, Air Conditioning"
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES;
+
+LOAD DATA FROM S3 's3://initial-lab2-bucket/imports/bookings.csv'
+INTO TABLE bookings
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES;
+
+LOAD DATA FROM S3 's3://initial-lab2-bucket/imports/user_viewing.csv'
+INTO TABLE user_viewing
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES;
+
+---------------------------------raw queries---------------------------------------
+CREATE TABLE IF NOT EXISTS raws.apartment_attributes (
+    id VARCHAR,
+    category VARCHAR,
+    body VARCHAR,
+    amenities VARCHAR,
+    bathrooms VARCHAR,
+    bedrooms VARCHAR,
+    fee VARCHAR,
+    has_photo VARCHAR,
+    pets_allowed VARCHAR,
+    price_display VARCHAR,
+    price_type VARCHAR,
+    square_feet VARCHAR,
+    address VARCHAR,
+    cityname VARCHAR,
+    state VARCHAR,
+    latitude VARCHAR,
+    longitude VARCHAR
+);
+CREATE TABLE IF NOT EXISTS raws.apartments (
+    id VARCHAR,
+    title VARCHAR,
+    source VARCHAR,
+    price VARCHAR,
+    currency VARCHAR,
+    listing_created_on VARCHAR,
+    is_active VARCHAR,
+    last_modified_timestamp VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS raws.bookings (
+    booking_id VARCHAR,
+    user_id VARCHAR,
+    apartment_id VARCHAR,
+    booking_date VARCHAR,
+    checkin_date VARCHAR,
+    checkout_date VARCHAR,
+    total_price VARCHAR,
+    currency VARCHAR,
+    booking_status VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS raws.user_viewing (
+    user_id VARCHAR,
+    apartment_id VARCHAR,
+    viewed_at VARCHAR,
+    is_wishlisted VARCHAR,
+    call_to_action VARCHAR
+);
+
+--------------------------------curated queries---------------------------------------------------
+CREATE TABLE IF NOT EXISTS curated.user_viewing (
+    user_id INTEGER,
+    apartment_id INTEGER,
+    viewed_at DATE,
+    is_wishlisted BOOLEAN,
+    call_to_action VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS curated.apartments (
+    id INTEGER,
+    title VARCHAR,
+    source VARCHAR,
+    price DOUBLE PRECISION,
+    currency VARCHAR,
+    listing_created_on DATE,
+    is_active BOOLEAN,
+    last_modified_date DATE
+);
+
+CREATE TABLE IF NOT EXISTS curated.bookings (
+    booking_id INTEGER,
+    user_id INTEGER,
+    apartment_id INTEGER,
+    booking_date DATE,
+    checkin_date DATE,
+    checkout_date DATE,
+    total_price DOUBLE PRECISION,
+    currency VARCHAR,
+    booking_status VARCHAR
+);
+CREATE TABLE IF NOT EXISTS curated.apartment_attributes (
+    id INTEGER,
+    category VARCHAR,
+    body VARCHAR,
+    amenities VARCHAR,
+    bathrooms DOUBLE PRECISION,
+    bedrooms DOUBLE PRECISION,
+    fee DOUBLE PRECISION,
+    has_photo BOOLEAN,
+    pets_allowed BOOLEAN,
+    price_display DOUBLE PRECISION,
+    price_type VARCHAR,
+    square_feet INTEGER,
+    address VARCHAR,
+    cityname VARCHAR,
+    state VARCHAR,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION
+);
+
+--------------------------------------------------presentaation-------------------------------------
+CREATE TABLE IF NOT EXISTS presentation.avg_listing_price_weekly (
+    week_start_date DATE,
+    avg_listing_price DOUBLE PRECISION
+);
+
+CREATE TABLE IF NOT EXISTS presentation.occupancy_rate_monthly (
+    month DATE,
+    booked_nights INTEGER,
+    available_nights INTEGER,
+    occupancy_rate_pct DOUBLE PRECISION
+);
+
+CREATE TABLE IF NOT EXISTS presentation.popular_locations_weekly (
+    week_start DATE,
+    cityname VARCHAR(255),
+    bookings_count INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS presentation.top_performing_listings_weekly (
+    week_start DATE,
+    apartment_id INTEGER,
+    weekly_revenue DOUBLE PRECISION
+);
+
+CREATE TABLE IF NOT EXISTS presentation.total_bookings_per_user_weekly (
+    week_start DATE,
+    user_id INTEGER,
+    total_bookings INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS presentation.avg_booking_duration_weekly (
+    week_start DATE,
+    avg_booking_duration_days DOUBLE PRECISION
+);
+
+CREATE TABLE IF NOT EXISTS presentation.repeat_customer_rate (
+    rolling_window_start_date DATE,
+    total_users INTEGER,
+    repeat_customers INTEGER,
+    repeat_customer_rate_pct DOUBLE PRECISION
+);
+
+
+
+-----------------------------
+-- top weeklylistings
+SELECT 
+    CAST(DATE_TRUNC('week', booking_date) AS DATE) AS week_start,
+    apartment_id,
+    SUM(total_price) AS weekly_revenue
+FROM curated.bookings
+WHERE booking_status LIKE '%confirmed%'
+GROUP BY CAST(DATE_TRUNC('week', booking_date) AS DATE), apartment_id
+ORDER BY week_start;
+
+-- avglistingprice
+SELECT 
+    CAST(DATE_TRUNC('week', listing_created_on) AS DATE) AS week_start,
+    ROUND(AVG(price), 2) AS avg_listing_price
+FROM curated.apartments
+WHERE is_active = TRUE
+GROUP BY 1
+ORDER BY 1
+
+-- total_bookings_per_user_weekly
+SELECT 
+    CAST(DATE_TRUNC('week', booking_date) AS DATE) AS week_start,
+    user_id,
+    COUNT(*) AS total_bookings
+FROM curated.bookings
+WHERE booking_status LIKE '%confirmed%'
+GROUP BY CAST(DATE_TRUNC('week', booking_date) AS DATE), user_id
+
+-- Average Booking Duration Weekly
+SELECT 
+    CAST(DATE_TRUNC('week', checkin_date) AS DATE) AS week_start,
+    ROUND(AVG(DATEDIFF(day, checkin_date, checkout_date)), 2) AS avg_booking_duration_days
+FROM curated.bookings
+WHERE booking_status LIKE '%confirmed%'
+GROUP BY 1
+ORDER BY 1
+
+------repeat customers---------------------
+
+WITH user_bookings AS (
+    SELECT
+        user_id,
+        booking_date::DATE AS booking_date,
+        LEAD(booking_date::DATE) OVER (
+            PARTITION BY user_id 
+            ORDER BY booking_date::DATE
+        ) AS next_booking_date
+    FROM curated.bookings
+    WHERE booking_status LIKE '%confirmed%'
+),
+
+repeat_customers AS (
+    SELECT DISTINCT user_id
+    FROM user_bookings
+    WHERE next_booking_date IS NOT NULL
+      AND DATEDIFF(day, booking_date, next_booking_date) <= 30
+)
+
+SELECT
+    TO_CHAR(DATE_TRUNC('month', b.booking_date::DATE), 'YYYY-MM')   AS month,
+    COUNT(DISTINCT rc.user_id)                                      AS repeat_customers
+FROM curated.bookings b
+JOIN repeat_customers rc ON b.user_id = rc.user_id
+GROUP BY 1
+ORDER BY 1;
+
+
+-----occupancy rate---------------------------------------
+WITH recent_bookings AS (
+    SELECT 
+        user_id,
+        booking_date
+    FROM curated.bookings
+    WHERE DATEDIFF(day, booking_date, CURRENT_DATE) <= 30
+),
+booking_counts AS (
+    SELECT 
+        user_id,
+        COUNT(*) AS total_bookings
+    FROM recent_bookings
+    GROUP BY user_id
+),
+repeat_customers AS (
+    SELECT 
+        user_id,
+        total_bookings,
+        CASE 
+            WHEN total_bookings > 1 THEN 1 
+            ELSE 0 
+        END AS is_repeat_customer
+    FROM booking_counts
+),
+final_agg AS (
+    SELECT 
+        CURRENT_DATE - INTERVAL '30 day' AS rolling_window_start_date,
+        COUNT(*) AS total_users,
+        SUM(is_repeat_customer) AS repeat_customers,
+        ROUND(SUM(is_repeat_customer)::DECIMAL / COUNT(*), 4) AS repeat_customer_rate
+    FROM repeat_customers
+)
+SELECT * FROM final_agg;
+
+
+
+
