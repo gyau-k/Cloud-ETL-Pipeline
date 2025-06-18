@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a **batch ELT pipeline** for a rental‑booking platform on AWS.  Raw data is extracted from an **Amazon Aurora** OLTP database, landed in **Amazon S3**, transformed with **AWS Glue**, and finally aggregated into presentation‑ready tables.  An **AWS Step Functions** state machine orchestrates the Glue jobs in sequence with retries and failure handling.
+This project implements a **batch ELT pipeline** for a rental‑booking.  Raw data is extracted from an **Amazon Aurora** OLTP database, landed in **Amazon S3**, transformed with **AWS Glue**, and finally aggregated into presentation‑ready tables.  An **AWS Step Functions** state machine orchestrates the Glue jobs in sequence with retries and failure handling.
 
 ```
 Aurora  ─► Glue Job (extract_aurora_to_s3) ─►  Raw S3  ─► Glue Job (lab2_s3_to_raw_complete)
@@ -22,17 +22,14 @@ Aurora  ─► Glue Job (extract_aurora_to_s3) ─►  Raw S3  ─► Glue Job (
 ## Folder / Schema Layout
 
 ```
-├── glue_jobs/
+├── scripts/
 │   ├── extract_aurora_to_s3.py
 │   ├── lab2_s3_to_raw_complete.py
 │   ├── lab2_raw_to_curated_complete.py
-│   └── lab2_curated_to_presentation.py
-├── step_functions/
-│   └── state_machine.json
-├── sql/
-│   ├── curated_schema.sql
-│   └── presentation_kpi_queries.sql
-└── README.md   <-- you are here
+│   ├── lab2_curated_to_presentation.py
+|.  ├── stepfunction.json
+│   └── sql_queries
+└── README.md   
 ```
 
 ### Redshift Schemas
@@ -49,7 +46,7 @@ Aurora  ─► Glue Job (extract_aurora_to_s3) ─►  Raw S3  ─► Glue Job (
 | Job                                  | Purpose                                                                  | Trigger                         |
 | ------------------------------------ | ------------------------------------------------------------------------ | ------------------------------- |
 | **extract\_aurora\_to\_s3**          | Runs an SQL unload from Aurora → writes parquet to S3 (`raw/aurora/`)    | Nightly (EventBridge 02:00 UTC) |
-| **lab2\_s3\_to\_raw\_complete**      | Parses/unifies raw files, writes canonical parquet to `raw/`             | After extract job completes     |
+| **lab2\_s3\_to\_raw\_complete**      | Parses/unifies raw files, writes  parquet to `raw/`             | After extract job completes     |
 | **lab2\_raw\_to\_curated\_complete** | Cleans, type‑casts, deduplicates, loads into **Redshift curated** schema | Step Functions                  |
 | **lab2\_curated\_to\_presentation**  | Aggregates KPIs, populates **presentation** schema tables                | Step Functions                  |
 
@@ -101,17 +98,14 @@ WHERE a.is_active = TRUE
 GROUP BY 1,2;
 ```
 
-More queries live in ``.
-
 ---
 
 ## Deployment
 
-1. **Create Redshift schemas** using `sql/curated_schema.sql`.
+1. **Create Redshift schemas**.
 2. **Upload Glue scripts** to an S3 code bucket.
 3. **Create Glue Jobs** (use IAM role with access to S3, Redshift, KMS).
 4. **Deploy Step Functions** via AWS Console or `aws stepfunctions create-state-machine`.
-5. **Schedule** the state machine via EventBridge rule (`cron(0 2 * * ? *)`).
 
 ---
 
