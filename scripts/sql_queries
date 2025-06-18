@@ -84,8 +84,9 @@ LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
 
 ---------------------------------raw queries---------------------------------------
+DROP TABLE IF EXISTS raws.apartment_attributes;
 CREATE TABLE IF NOT EXISTS raws.apartment_attributes (
-    id VARCHAR,
+    id int,
     category VARCHAR,
     body VARCHAR,
     amenities VARCHAR,
@@ -103,8 +104,10 @@ CREATE TABLE IF NOT EXISTS raws.apartment_attributes (
     latitude VARCHAR,
     longitude VARCHAR
 );
+
+DROP TABLE IF EXISTS raws.apartments;
 CREATE TABLE IF NOT EXISTS raws.apartments (
-    id VARCHAR,
+    id int,
     title VARCHAR,
     source VARCHAR,
     price VARCHAR,
@@ -114,10 +117,11 @@ CREATE TABLE IF NOT EXISTS raws.apartments (
     last_modified_timestamp VARCHAR
 );
 
+DROP TABLE IF EXISTS raws.bookings;
 CREATE TABLE IF NOT EXISTS raws.bookings (
-    booking_id VARCHAR,
-    user_id VARCHAR,
-    apartment_id VARCHAR,
+    booking_id int,
+    user_id int,
+    apartment_id int,
     booking_date VARCHAR,
     checkin_date VARCHAR,
     checkout_date VARCHAR,
@@ -126,15 +130,18 @@ CREATE TABLE IF NOT EXISTS raws.bookings (
     booking_status VARCHAR
 );
 
+DROP TABLE IF EXISTS raws.user_viewing;
 CREATE TABLE IF NOT EXISTS raws.user_viewing (
-    user_id VARCHAR,
-    apartment_id VARCHAR,
+    user_id int,
+    apartment_id int,
     viewed_at VARCHAR,
     is_wishlisted VARCHAR,
     call_to_action VARCHAR
 );
 
 --------------------------------curated queries---------------------------------------------------
+
+DROP TABLE IF EXISTS curated.user_viewing;
 CREATE TABLE IF NOT EXISTS curated.user_viewing (
     user_id INTEGER,
     apartment_id INTEGER,
@@ -143,6 +150,7 @@ CREATE TABLE IF NOT EXISTS curated.user_viewing (
     call_to_action VARCHAR
 );
 
+DROP TABLE IF EXISTS curated.apartments;
 CREATE TABLE IF NOT EXISTS curated.apartments (
     id INTEGER,
     title VARCHAR,
@@ -154,6 +162,7 @@ CREATE TABLE IF NOT EXISTS curated.apartments (
     last_modified_date DATE
 );
 
+DROP TABLE IF EXISTS curated.bookings;
 CREATE TABLE IF NOT EXISTS curated.bookings (
     booking_id INTEGER,
     user_id INTEGER,
@@ -165,6 +174,8 @@ CREATE TABLE IF NOT EXISTS curated.bookings (
     currency VARCHAR,
     booking_status VARCHAR
 );
+
+DROP TABLE IF EXISTS curated.apartment_attributes;
 CREATE TABLE IF NOT EXISTS curated.apartment_attributes (
     id INTEGER,
     category VARCHAR,
@@ -185,12 +196,15 @@ CREATE TABLE IF NOT EXISTS curated.apartment_attributes (
     longitude DOUBLE PRECISION
 );
 
---------------------------------------------------presentaation-------------------------------------
+--------------------------------------------------presentation-------------------------------------
+
+DROP TABLE IF EXISTS presentation.avg_listing_price_weekly;
 CREATE TABLE IF NOT EXISTS presentation.avg_listing_price_weekly (
     week_start_date DATE,
     avg_listing_price DOUBLE PRECISION
 );
 
+DROP TABLE IF EXISTS presentation.occupancy_rate_monthly;
 CREATE TABLE IF NOT EXISTS presentation.occupancy_rate_monthly (
     month DATE,
     booked_nights INTEGER,
@@ -198,29 +212,34 @@ CREATE TABLE IF NOT EXISTS presentation.occupancy_rate_monthly (
     occupancy_rate_pct DOUBLE PRECISION
 );
 
+DROP TABLE IF EXISTS presentation.popular_locations_weekly;
 CREATE TABLE IF NOT EXISTS presentation.popular_locations_weekly (
     week_start DATE,
     cityname VARCHAR(255),
     bookings_count INTEGER
 );
 
+DROP TABLE IF EXISTS presentation.top_performing_listings_weekly;
 CREATE TABLE IF NOT EXISTS presentation.top_performing_listings_weekly (
     week_start DATE,
     apartment_id INTEGER,
     weekly_revenue DOUBLE PRECISION
 );
 
+DROP TABLE IF EXISTS presentation.total_bookings_per_user_weekly;
 CREATE TABLE IF NOT EXISTS presentation.total_bookings_per_user_weekly (
     week_start DATE,
     user_id INTEGER,
     total_bookings INTEGER
 );
 
+DROP TABLE IF EXISTS presentation.avg_booking_duration_weekly;
 CREATE TABLE IF NOT EXISTS presentation.avg_booking_duration_weekly (
     week_start DATE,
     avg_booking_duration_days DOUBLE PRECISION
 );
 
+DROP TABLE IF EXISTS presentation.repeat_customer_rate;
 CREATE TABLE IF NOT EXISTS presentation.repeat_customer_rate (
     rolling_window_start_date DATE,
     total_users INTEGER,
