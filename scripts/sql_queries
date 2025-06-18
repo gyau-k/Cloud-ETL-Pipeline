@@ -83,6 +83,16 @@ FIELDS TERMINATED BY ','
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES;
 
+
+--------------------------------schema---------------------------------------------
+-- Create schema for raw ingested data
+CREATE SCHEMA IF NOT EXISTS raws;
+
+-- Create schema for cleaned and enriched data
+CREATE SCHEMA IF NOT EXISTS curated;
+
+-- Create schema for final tables optimized for analytics and reporting
+CREATE SCHEMA IF NOT EXISTS presentation;
 ---------------------------------raw queries---------------------------------------
 DROP TABLE IF EXISTS raws.apartment_attributes;
 CREATE TABLE IF NOT EXISTS raws.apartment_attributes (
