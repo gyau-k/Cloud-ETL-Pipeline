@@ -252,12 +252,12 @@ ORDER BY 1
 
 -- total_bookings_per_user_weekly
 SELECT 
-    CAST(DATE_TRUNC('week', booking_date) AS DATE) AS week_start,
-    user_id,
+    CAST(DATE_TRUNC('week', booking_date) AS DATE) AS week_start,user_id,
     COUNT(*) AS total_bookings
 FROM curated.bookings
 WHERE booking_status LIKE '%confirmed%'
-GROUP BY CAST(DATE_TRUNC('week', booking_date) AS DATE), user_id
+GROUP BY CAST(DATE_TRUNC('week', booking_date) AS DATE),user_id
+
 
 -- Average Booking Duration Weekly
 SELECT 
@@ -299,40 +299,37 @@ ORDER BY 1;
 
 
 -----occupancy rate---------------------------------------
-WITH occpancy_bookings AS (
-    SELECT 
-        user_id,
-        booking_date
+WITH bking_cal AS (
+    SELECT
+        DATE_TRUNC('month', checkin_date)      AS month_start_date,
+        DATEDIFF(day, checkin_date, checkout_date) AS booked_nights
     FROM curated.bookings
-    WHERE DATEDIFF(day, booking_date, CURRENT_DATE) <= 30
-),
-booking_counts AS (
-    SELECT 
-        user_id,
-        COUNT(*) AS total_bookings
-    FROM occpancy_bookings
-    GROUP BY user_id
-),
-repeat_customers AS (
-    SELECT 
-        user_id,
-        total_bookings,
-        CASE 
-            WHEN total_bookings > 1 THEN 1 
-            ELSE 0 
-        END AS is_repeat_customer
-    FROM booking_counts
-),
-final_agg AS (
-    SELECT 
-        CURRENT_DATE - INTERVAL '30 day' AS rolling_window_start_date,
-        COUNT(*) AS total_users,
-        SUM(is_repeat_customer) AS repeat_customers,
-        ROUND(SUM(is_repeat_customer)::DECIMAL / COUNT(*), 4) AS repeat_customer_rate
-    FROM repeat_customers
+    WHERE booking_status LIKE '%confirmed%'
 )
-SELECT * FROM final_agg;
+
+SELECT
+    month_start_date,
+    SUM(booked_nights)                       AS total_booked_nights,
+    COUNT(*)                                 AS num_bookings,
+    ROUND(
+        SUM(booked_nights)::DECIMAL / (COUNT(*) * 30.0),
+        4
+    ) AS occupancy_rate
+FROM bking_cal
+GROUP BY 1
+ORDER BY 1
 
 
 
+-- popular_locations_weekly
+SELECT
+  CAST(DATE_TRUNC('week', a.booking_date) AS DATE) AS week_start,
+  b.cityname,
+  COUNT(*) AS total_bookings
+FROM curated.bookings a
+LEFT JOIN curated.apartment_attributes b
+  ON a.apartment_id = b.id
+WHERE a.booking_status LIKE '%confirmed%'
+GROUP BY week_start, b.cityname
+ORDER BY week_start, total_bookings DESC
 
