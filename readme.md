@@ -45,7 +45,7 @@ Aurora  ─► Glue Job (extract_aurora_to_s3) ─►  Raw S3  ─► Glue Job (
 
 | Job                                  | Purpose                                                                  | Trigger                         |
 | ------------------------------------ | ------------------------------------------------------------------------ | ------------------------------- |
-| **extract\_aurora\_to\_s3**          | Runs an SQL unload from Aurora → writes parquet to S3 (`raw/aurora/`)    | Nightly (EventBridge 02:00 UTC) |
+| **extract\_aurora\_to\_s3**          | Runs an SQL unload from Aurora → writes parquet to S3 (`raw/aurora/`)    |
 | **lab2\_s3\_to\_raw\_complete**      | Parses/unifies raw files, writes  parquet to `raw/`             | After extract job completes     |
 | **lab2\_raw\_to\_curated\_complete** | Cleans, type‑casts, deduplicates, loads into **Redshift curated** schema | Step Functions                  |
 | **lab2\_curated\_to\_presentation**  | Aggregates KPIs, populates **presentation** schema tables                | Step Functions                  |
