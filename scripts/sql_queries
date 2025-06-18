@@ -270,28 +270,28 @@ ORDER BY 1
 
 ------repeat customers---------------------
 
-WITH user_bookings AS (
+WITH userbookings AS (
     SELECT
         user_id,
         booking_date::DATE AS booking_date,
         LEAD(booking_date::DATE) OVER (
             PARTITION BY user_id 
             ORDER BY booking_date::DATE
-        ) AS next_booking_date
+        ) AS new_booking_date
     FROM curated.bookings
     WHERE booking_status LIKE '%confirmed%'
 ),
 
 repeat_customers AS (
     SELECT DISTINCT user_id
-    FROM user_bookings
-    WHERE next_booking_date IS NOT NULL
-      AND DATEDIFF(day, booking_date, next_booking_date) <= 30
+    FROM userbookings
+    WHERE new_booking_date IS NOT NULL
+      AND DATEDIFF(day, booking_date, new_booking_date) <= 30
 )
 
 SELECT
-    TO_CHAR(DATE_TRUNC('month', b.booking_date::DATE), 'YYYY-MM')   AS month,
-    COUNT(DISTINCT rc.user_id)                                      AS repeat_customers
+    TO_CHAR(DATE_TRUNC('month', b.booking_date::DATE), 'YYYY-MM')  AS month,
+    COUNT(DISTINCT rc.user_id) AS repeat_customers
 FROM curated.bookings b
 JOIN repeat_customers rc ON b.user_id = rc.user_id
 GROUP BY 1
@@ -299,7 +299,7 @@ ORDER BY 1;
 
 
 -----occupancy rate---------------------------------------
-WITH recent_bookings AS (
+WITH occpancy_bookings AS (
     SELECT 
         user_id,
         booking_date
@@ -310,7 +310,7 @@ booking_counts AS (
     SELECT 
         user_id,
         COUNT(*) AS total_bookings
-    FROM recent_bookings
+    FROM occpancy_bookings
     GROUP BY user_id
 ),
 repeat_customers AS (
