@@ -1,0 +1,49 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - lab4
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<your-account-id>:role/<your-role-name>
+          aws-region: eu-north-1  # change as needed
+
+      - name: Upload EMR script to S3
+        run: |
+          aws s3 cp emr_scripts/spark_job.py s3://your-bucket/scripts/
+
+      - name: Upload Glue script to S3
+        run: |
+          aws s3 cp glue_jobs/transform_data.py s3://your-bucket/glue-scripts/
+
+      - name: Trigger Glue Job
+        run: |
+          aws glue start-job-run --job-name your-glue-job-name
+
+      - name: Run Athena Query
+        run: |
+          aws athena start-query-execution \
+            --query-string file://sql/athena_query.sql \
+            --query-execution-context Database=your_database \
+            --result-configuration OutputLocation=s3://your-bucket/athena-results/
+
+      - name: Start Step Function Execution
+        run: |
+          aws stepfunctions start-execution \
+            --state-machine-arn arn:aws:states:your-region:<your-account-id>:stateMachine:YourStateMachine \
+            --input file://step_functions/input.json
