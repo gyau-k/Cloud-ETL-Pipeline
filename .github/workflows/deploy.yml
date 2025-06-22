@@ -20,12 +20,12 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::<your-account-id>:role/<your-role-name>
+          role-to-assume: arn:aws:iam::763927202642:role/GitHubActionsRole-KgyauAmtch-Amtch_Personal_Projects-phase2-
           aws-region: eu-north-1  # change as needed
 
       - name: Upload EMR script to S3
         run: |
-          aws s3 cp emr_scripts/spark_job.py s3://your-bucket/scripts/
+          aws s3 cp emr_scripts/spark_job.py s3://lab4-bucket-gtp/emr-scripts/
 
       - name: Upload Glue script to S3
         run: |
@@ -40,7 +40,7 @@ jobs:
           aws athena start-query-execution \
             --query-string file://sql/athena_query.sql \
             --query-execution-context Database=your_database \
-            --result-configuration OutputLocation=s3://your-bucket/athena-results/
+            --result-configuration OutputLocation=s3://lab4-bucket-gtp/athena_results/
 
       - name: Start Step Function Execution
         run: |
